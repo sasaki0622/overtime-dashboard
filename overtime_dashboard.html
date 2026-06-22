@@ -163,14 +163,36 @@ function parseCSV(text, filename) {
   const month = detectMonth(filename);
   const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) throw new Error('データが不足しています（2行以上必要）');
+
+  const headers = lines[0].split(',').map(c => c.trim().replace(/^["'\uFEFF]|["']$/g, ''));
+
+  // 列を名前で自動検出
+  let nameIdx = -1, hoursIdx = -1, deptIdx = -1;
+  headers.forEach((h, i) => {
+    if (nameIdx === -1 && (h.includes('氏名') || h.includes('社員名') || h.includes('名前'))) nameIdx = i;
+    if (h.includes('残業時間') && h.includes('除く')) hoursIdx = i;
+    if (hoursIdx === -1 && h.includes('残業時間')) hoursIdx = i;
+    if (deptIdx === -1 && (h.includes('雇用形態') || h.includes('部署') || h.includes('所属'))) deptIdx = i;
+  });
+
+  // ヘッダーで見つからない場合は先頭列を使用（社員名,残業時間 形式）
+  if (nameIdx === -1) nameIdx = 0;
+  if (hoursIdx === -1) hoursIdx = 1;
+
   const records = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g,''));
-    if (!cols[0] || !cols[1]) continue;
-    const h = parseFloat(cols[1]);
+    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+    const name = cols[nameIdx];
+    const hoursStr = cols[hoursIdx];
+    if (!name || hoursStr === undefined) continue;
+    const h = parseFloat(hoursStr);
     if (isNaN(h)) continue;
-    records.push({ name: cols[0], hours: h, dept: cols[2] || '' });
+    const dept = deptIdx >= 0 ? (cols[deptIdx] || '') : '';
+    // パート・アルバイトは除外
+    if (dept.includes('パート') || dept.includes('アルバイト')) continue;
+    records.push({ name, hours: h, dept: '' }); // 雇用形態は非表示
   }
+
   if (!records.length) throw new Error('有効なデータが見つかりません');
   return { month, records };
 }
@@ -307,20 +329,35 @@ ua.addEventListener('drop', e => { e.preventDefault(); ua.classList.remove('drag
 fi.addEventListener('change', () => { if(fi.files[0]) handleFile(fi.files[0]); fi.value=''; });
 
 function handleFile(file) {
+  const tryParse = (text) => {
+    const { month, records } = parseCSV(text, file.name);
+    if (!state.months) state.months = {};
+    if (!state.meta) state.meta = {};
+    if (state.months[month] && !confirm(`${monthLabel(month)}のデータが既にあります。上書きしますか？`)) return;
+    state.months[month] = records;
+    state.meta[month] = { uploadedAt: new Date().toLocaleDateString('ja-JP') };
+    currentMonth = month;
+    save(`${monthLabel(month)}のデータを反映しました`); render();
+  };
+
   const reader = new FileReader();
   reader.onload = e => {
-    try {
-      const { month, records } = parseCSV(e.target.result, file.name);
-      if (state.months[month] && !confirm(`${monthLabel(month)}のデータが既にあります。上書きしますか？`)) return;
-      if (!state.months) state.months = {};
-      if (!state.meta) state.meta = {};
-      state.months[month] = records;
-      state.meta[month] = { uploadedAt: new Date().toLocaleDateString('ja-JP') };
-      currentMonth = month;
-      save(`${monthLabel(month)}のデータを反映しました`); render();
-    } catch(err) { alert('読み込み失敗:\n' + err.message); }
+    const buffer = e.target.result;
+    const encodings = ['shift_jis', 'utf-8', 'euc-jp'];
+    let text = null;
+    for (const enc of encodings) {
+      try {
+        const decoded = new TextDecoder(enc, { fatal: true }).decode(buffer);
+        if (decoded.indexOf("�") === -1) { text = decoded; break; }
+        if (text === null) text = decoded;
+      } catch(e) {}
+    }
+    if (!text) { alert('文字コードを判定できませんでした。'); return; }
+    try { tryParse(text); }
+    catch(err) { alert('読み込み失敗:\n' + err.message); }
   };
-  reader.readAsText(file, 'UTF-8');
+  reader.onerror = () => alert('ファイルの読み込みに失敗しました。');
+  reader.readAsArrayBuffer(file);
 }
 
 load();

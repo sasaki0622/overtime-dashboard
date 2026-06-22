@@ -326,7 +326,6 @@ ua.addEventListener('drop', e => { e.preventDefault(); ua.classList.remove('drag
 fi.addEventListener('change', () => { if(fi.files[0]) handleFile(fi.files[0]); fi.value=''; });
 
 function handleFile(file) {
-  // まずShift-JISで試み、文字化けしていればUTF-8で再試行
   const tryParse = (text) => {
     const { month, records } = parseCSV(text, file.name);
     if (!state.months) state.months = {};
@@ -338,31 +337,24 @@ function handleFile(file) {
     save(`${monthLabel(month)}のデータを反映しました`); render();
   };
 
-  const readAs = (encoding) => new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = e => resolve(e.target.result);
-    r.onerror = reject;
-    r.readAsText(file, encoding);
-  });
-
-  (async () => {
-    try {
-      // Shift-JISで読み込み、文字化け検出（UTF-8文字が含まれていればUTF-8）
-      const sjisText = await readAs('Shift-JIS');
-      // 文字化けチェック：置換文字(U+FFFD)や不自然な記号が多ければUTF-8で再試行
-      const hasGarble = (sjisText.match(/\uFFFD/g) || []).length > 2;
-      const text = hasGarble ? await readAs('UTF-8') : sjisText;
-      tryParse(text);
-    } catch(err) {
-      // どちらでも失敗した場合はUTF-8で最終試行
+  const reader = new FileReader();
+  reader.onload = e => {
+    const buffer = e.target.result;
+    const encodings = ['shift_jis', 'utf-8', 'euc-jp'];
+    let text = null;
+    for (const enc of encodings) {
       try {
-        const text = await readAs('UTF-8');
-        tryParse(text);
-      } catch(err2) {
-        alert('読み込み失敗:\n' + err2.message + '\n\nCSVの形式を確認してください。\n例）社員名,残業時間\n田中太郎,35');
-      }
+        const decoded = new TextDecoder(enc, { fatal: true }).decode(buffer);
+        if (decoded.indexOf("�") === -1) { text = decoded; break; }
+        if (text === null) text = decoded;
+      } catch(e) {}
     }
-  })();
+    if (!text) { alert('文字コードを判定できませんでした。'); return; }
+    try { tryParse(text); }
+    catch(err) { alert('読み込み失敗:\n' + err.message); }
+  };
+  reader.onerror = () => alert('ファイルの読み込みに失敗しました。');
+  reader.readAsArrayBuffer(file);
 }
 
 load();

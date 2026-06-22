@@ -201,9 +201,86 @@ function getLimit() { return parseInt(document.getElementById('limitInput').valu
 
 function render() {
   const months = Object.keys(state.months).sort().reverse();
-  const content = document.getElementById('appContent');
-  if (!months.length) { content.innerHTML = '<div class="empty">📊 CSVファイルをアップロードしてください</div>'; return; }
-  if (!currentMonth || !state.months[currentMonth]) currentMonth = months[0];
+  const el = document.getElementById('appContent');
+  if (!months.length) { el.innerHTML = '<div class="empty">📊 CSVファイルをアップロードしてください</div>'; return; }
+  // currentMonthがnullなら月別合計画面、セットされていれば詳細画面
+  if (currentMonth && !state.months[currentMonth]) currentMonth = null;
+  currentMonth ? renderDetail(months, el) : renderSummary(months, el);
+}
+
+function renderSummary(months, el) {
+  const limit = getLimit();
+  const rows = months.map(m => {
+    const recs = state.months[m] || [];
+    const total = recs.reduce((s,r) => s+r.hours, 0);
+    const avg = recs.length ? (total/recs.length).toFixed(1) : '0.0';
+    const max = recs.length ? Math.max(...recs.map(r=>r.hours)) : 0;
+    const over = recs.filter(r => r.hours > limit).length;
+    const overCell = over > 0
+      ? `<td style="text-align:center"><span class="badge badge-alert">${over}名</span></td>`
+      : `<td style="text-align:center"><span class="badge badge-ok">なし</span></td>`;
+    return `<tr style="cursor:pointer" onclick="switchMonth('${m}')">
+      <td style="font-weight:600">${monthLabel(m)}</td>
+      <td style="text-align:right">${recs.length}名</td>
+      <td style="text-align:right;font-weight:600">${total}h</td>
+      <td style="text-align:right">${avg}h</td>
+      <td style="text-align:right">${max}h</td>
+      ${overCell}
+      <td style="text-align:center;color:#aeaeb2;font-size:12px">詳細 ›</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">月別残業サマリー</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>月</th>
+            <th style="text-align:right">人数</th>
+            <th style="text-align:right">合計</th>
+            <th style="text-align:right">平均</th>
+            <th style="text-align:right">最大</th>
+            <th style="text-align:center">超過者</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    ${months.length > 1 ? renderTrendSummary(months) : ''}
+  `;
+}
+
+function renderTrendSummary(months) {
+  const limit = getLimit();
+  const mList = months.slice().reverse();
+  const labels = mList.map(monthLabel);
+  const totals = mList.map(m => (state.months[m]||[]).reduce((s,r)=>s+r.hours,0));
+  const overs  = mList.map(m => (state.months[m]||[]).filter(r=>r.hours>limit).length);
+  const maxV = Math.max(...totals, 1);
+  const W=620,H=180,mL=50,mR=16,mT=16,mB=40,cW=W-mL-mR,cH=H-mT-mB;
+  const barW = Math.min(60, cW/mList.length*0.6);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;overflow:visible">`;
+  [0,25,50,75,100].filter(v=>v<=maxV*1.15).forEach(t=>{
+    const y=mT+cH-(t/maxV)*cH;
+    svg+=`<line x1="${mL}" y1="${y.toFixed(1)}" x2="${W-mR}" y2="${y.toFixed(1)}" stroke="#e5e5ea" stroke-width="1"/>`;
+    svg+=`<text x="${mL-5}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#aeaeb2" font-family="sans-serif">${t}h</text>`;
+  });
+  mList.forEach((m,i)=>{
+    const x = mL+(mCount=>mCount>1?(i/(mCount-1))*cW:cW/2)(mList.length);
+    const barH = (totals[i]/maxV)*cH;
+    const barY = mT+cH-barH;
+    const color = overs[i]>0 ? '#D85A30' : '#378ADD';
+    svg+=`<rect x="${(x-barW/2).toFixed(1)}" y="${barY.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" fill="${color}" rx="3" style="cursor:pointer" onclick="switchMonth('${m}')"/>`;
+    svg+=`<text x="${x.toFixed(1)}" y="${(barY-4).toFixed(1)}" text-anchor="middle" font-size="10" fill="#6e6e73" font-family="sans-serif">${totals[i]}h</text>`;
+    svg+=`<text x="${x.toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="10" fill="#aeaeb2" font-family="sans-serif">${labels[i]}</text>`;
+  });
+  svg+='</svg>';
+  return `<div class="card"><div class="card-title">月別合計残業時間（棒グラフ）<span style="font-size:11px;color:#aeaeb2;margin-left:8px">🔴超過者あり ／ 🔵正常</span></div>${svg}</div>`;
+}
+
+function renderDetail(months, el) {
   const limit = getLimit();
   const records = state.months[currentMonth] || [];
   const meta = (state.meta || {})[currentMonth] || {};
@@ -213,11 +290,6 @@ function render() {
   const over = records.filter(r => r.hours > limit).length;
   const sorted = [...records].sort((a,b) => b.hours - a.hours);
   const maxH = sorted[0]?.hours || 1;
-  const hasDept = records.some(r => r.dept);
-
-  const monthBtns = months.map(m =>
-    `<button class="month-btn${m===currentMonth?' active':''}" onclick="switchMonth('${m}')">${monthLabel(m)}</button>`
-  ).join('');
 
   const bars = sorted.map(r => {
     const pct = Math.round((r.hours/maxH)*100);
@@ -236,16 +308,14 @@ function render() {
     const badge = r.hours>limit ? '<span class="badge badge-alert">超過</span>'
       : r.hours>limit*0.8 ? '<span class="badge badge-warn">注意</span>'
       : '<span class="badge badge-ok">正常</span>';
-    return `<tr><td>${r.name}</td>${hasDept?`<td style="color:#6e6e73">${r.dept}</td>`:''}<td style="text-align:right;font-weight:600">${r.hours}h</td><td>${badge}</td></tr>`;
+    return `<tr><td>${r.name}</td><td style="text-align:right;font-weight:600">${r.hours}h</td><td>${badge}</td></tr>`;
   }).join('');
 
   const uploaderInfo = meta.uploadedAt ? `<span class="uploader-tag">更新: ${meta.uploadedAt}</span>` : '';
 
-  content.innerHTML = `
-    <div class="month-bar">
-      <span style="font-size:12px;color:#6e6e73">月選択:</span>
-      ${monthBtns}
-      <button class="del-btn" onclick="deleteMonth('${currentMonth}')" title="この月を削除">🗑</button>
+  el.innerHTML = `
+    <div style="margin-bottom:1rem">
+      <button onclick="currentMonth=null;render()" style="font-size:13px;color:#378ADD;background:none;border:none;cursor:pointer;padding:0">← 月別サマリーに戻る</button>
     </div>
     <div class="metrics">
       <div class="metric"><div class="metric-label">対象人数</div><div class="metric-value">${records.length}名</div></div>
@@ -255,14 +325,16 @@ function render() {
       <div class="metric"><div class="metric-label">基準超過者</div><div class="metric-value ${over>0?'warn':'ok'}">${over}名</div></div>
     </div>
     <div class="card">
-      <div class="card-title">残業時間グラフ（${monthLabel(currentMonth)}）${uploaderInfo}</div>
+      <div class="card-title">残業時間グラフ（${monthLabel(currentMonth)}）${uploaderInfo}
+        <button class="del-btn" onclick="deleteMonth('${currentMonth}')" title="この月を削除">🗑 削除</button>
+      </div>
       ${bars}
     </div>
     <div class="card">
       <div class="card-title">詳細一覧</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>社員名</th>${hasDept?'<th>部署</th>':''}<th style="text-align:right">残業時間</th><th>状態</th></tr></thead>
+          <thead><tr><th>社員名</th><th style="text-align:right">残業時間</th><th>状態</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>

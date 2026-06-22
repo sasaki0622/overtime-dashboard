@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>残業管理ダッシュボード</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f7; --bg3: #ebebed;
+    --text: #1a1a1a; --text2: #6e6e73; --text3: #aeaeb2;
+    --border: #d1d1d6; --border2: #e5e5ea;
+    --green: #1D9E75; --green-bg: #E1F5EE; --green-text: #0F6E56;
+    --orange: #BA7517; --orange-bg: #FAEEDA; --orange-text: #854F0B;
+    --red: #D85A30; --red-bg: #FCEBEB; --red-text: #A32D2D;
+    --blue: #378ADD;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+  .container { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 10px; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .badge-shared { font-size: 11px; background: var(--green-bg); color: var(--green-text); padding: 3px 10px; border-radius: 20px; font-weight: 600; margin-left: 8px; }
+  .limit-box { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); }
+  .limit-box input { width: 58px; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; text-align: center; }
+
+  /* Upload */
+  .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.25rem; text-align: center; cursor: pointer; transition: background 0.15s; margin-bottom: 1.25rem; }
+  .upload-area:hover, .upload-area.drag { background: var(--bg2); border-color: var(--blue); }
+  .upload-icon { font-size: 28px; margin-bottom: 6px; }
+  .upload-label { font-size: 13px; color: var(--text2); }
+  .upload-label strong { color: var(--text); }
+
+  /* Info box */
+  .info-box { background: var(--bg2); border-left: 3px solid var(--blue); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 0.75rem 1rem; font-size: 12px; color: var(--text2); line-height: 1.8; margin-bottom: 1.25rem; }
+  .info-box code { font-family: "Courier New", monospace; font-size: 11px; background: white; border: 1px solid var(--border2); border-radius: 3px; padding: 1px 5px; color: var(--text); }
+
+  /* Month tabs */
+  .month-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .month-btn { font-size: 12px; padding: 4px 14px; border-radius: 20px; border: 1px solid var(--border); background: transparent; cursor: pointer; color: var(--text2); transition: all 0.15s; }
+  .month-btn.active { background: var(--bg2); color: var(--text); font-weight: 600; border-color: #999; }
+  .del-btn { font-size: 12px; color: var(--text3); cursor: pointer; border: none; background: none; padding: 2px 8px; border-radius: 4px; }
+  .del-btn:hover { background: var(--red-bg); color: var(--red-text); }
+
+  /* Metrics */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: 0.875rem 1rem; }
+  .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-value.warn { color: var(--red); }
+  .metric-value.ok { color: var(--green); }
+
+  /* Card */
+  .card { background: white; border: 1px solid var(--border2); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+  .card-title { font-size: 13px; color: var(--text2); margin-bottom: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
+
+  /* Bar chart */
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .bar-name { font-size: 12px; color: var(--text2); width: 80px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; height: 22px; background: var(--bg2); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; transition: width 0.5s ease; }
+  .bar-val { font-size: 11px; font-weight: 600; color: white; }
+
+  /* Badges */
+  .badge { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 10px; font-weight: 600; flex-shrink: 0; }
+  .badge-ok    { background: var(--green-bg); color: var(--green-text); }
+  .badge-warn  { background: var(--orange-bg); color: var(--orange-text); }
+  .badge-alert { background: var(--red-bg); color: var(--red-text); }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 7px 10px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border2); font-size: 12px; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border2); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg2); }
+
+  /* Sync */
+  .sync-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); margin-bottom: 1rem; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .empty { text-align: center; padding: 3rem; color: var(--text2); }
+  .uploader-tag { font-size: 11px; color: var(--text3); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div>
+      <span style="font-size:20px">⏱</span>
+      <strong style="font-size:18px; margin-left:6px">残業管理ダッシュボード</strong>
+      <span class="badge-shared">👥 共有</span>
+    </div>
+    <div class="limit-box">
+      警告基準
+      <input type="number" id="limitInput" value="45" min="0" max="300">
+      時間
+    </div>
+  </div>
+
+  <div class="info-box">
+    <strong style="color:#1a1a1a">CSVフォーマット：</strong>
+    1行目（ヘッダー）: <code>社員名,残業時間</code> または <code>社員名,残業時間,部署</code><br>
+    2行目以降: <code>田中太郎,35</code> / <code>鈴木花子,28,営業部</code><br>
+    ファイル名に年月を入れると自動認識: <code>残業_2026-06.csv</code>
+  </div>
+
+  <div class="upload-area" id="uploadArea">
+    <div class="upload-icon">📂</div>
+    <div class="upload-label"><strong>CSVファイルをドロップ</strong>またはクリックして選択</div>
+    <input type="file" id="fileInput" accept=".csv" style="display:none">
+  </div>
+
+  <div id="syncStatus" class="sync-row" style="display:none">
+    <span class="dot"></span><span id="syncMsg"></span>
+  </div>
+
+  <div id="appContent"></div>
+</div>
+
+<script>
+const LS_KEY = 'overtime_v1';
+let state = { months: {}, meta: {}, limit: 45 };
+let currentMonth = null;
+
+function load() {
+  try {
+    const s = localStorage.getItem(LS_KEY);
+    if (s) state = JSON.parse(s);
+  } catch(e) {}
+  document.getElementById('limitInput').value = state.limit || 45;
+  render();
+}
+
+function save(msg) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e) {}
+  if (msg) showSync(msg);
+}
+
+function showSync(msg) {
+  const el = document.getElementById('syncStatus');
+  document.getElementById('syncMsg').textContent = msg + ' — ' + new Date().toLocaleTimeString('ja-JP');
+  el.style.display = 'flex';
+  clearTimeout(window._t);
+  window._t = setTimeout(() => el.style.display = 'none', 4000);
+}
+
+function monthLabel(m) {
+  if (!m) return '';
+  const [y, mo] = m.split('-');
+  return `${y}年${parseInt(mo)}月`;
+}
+
+function detectMonth(filename) {
+  const match = filename.match(/(\d{4})[-_年]?(\d{1,2})/);
+  if (match) return `${match[1]}-${match[2].padStart(2,'0')}`;
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+}
+
+function parseCSV(text, filename) {
+  const month = detectMonth(filename);
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) throw new Error('データが不足しています（2行以上必要）');
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g,''));
+    if (!cols[0] || !cols[1]) continue;
+    const h = parseFloat(cols[1]);
+    if (isNaN(h)) continue;
+    records.push({ name: cols[0], hours: h, dept: cols[2] || '' });
+  }
+  if (!records.length) throw new Error('有効なデータが見つかりません');
+  return { month, records };
+}
+
+function getLimit() { return parseInt(document.getElementById('limitInput').value) || 45; }
+
+function render() {
+  const months = Object.keys(state.months).sort().reverse();
+  const content = document.getElementById('appContent');
+  if (!months.length) { content.innerHTML = '<div class="empty">📊 CSVファイルをアップロードしてください</div>'; return; }
+  if (!currentMonth || !state.months[currentMonth]) currentMonth = months[0];
+  const limit = getLimit();
+  const records = state.months[currentMonth] || [];
+  const meta = (state.meta || {})[currentMonth] || {};
+  const total = records.reduce((s,r) => s+r.hours, 0);
+  const avg = records.length ? total/records.length : 0;
+  const max = records.length ? Math.max(...records.map(r=>r.hours)) : 0;
+  const over = records.filter(r => r.hours > limit).length;
+  const sorted = [...records].sort((a,b) => b.hours - a.hours);
+  const maxH = sorted[0]?.hours || 1;
+  const hasDept = records.some(r => r.dept);
+
+  const monthBtns = months.map(m =>
+    `<button class="month-btn${m===currentMonth?' active':''}" onclick="switchMonth('${m}')">${monthLabel(m)}</button>`
+  ).join('');
+
+  const bars = sorted.map(r => {
+    const pct = Math.round((r.hours/maxH)*100);
+    const color = r.hours>limit ? '#D85A30' : r.hours>limit*0.8 ? '#BA7517' : '#1D9E75';
+    const badge = r.hours>limit ? '<span class="badge badge-alert">超過</span>'
+      : r.hours>limit*0.8 ? '<span class="badge badge-warn">注意</span>' : '';
+    return `<div class="bar-row">
+      <div class="bar-name" title="${r.name}">${r.name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">
+        <span class="bar-val">${r.hours}h</span></div></div>
+      ${badge}
+    </div>`;
+  }).join('');
+
+  const rows = sorted.map(r => {
+    const badge = r.hours>limit ? '<span class="badge badge-alert">超過</span>'
+      : r.hours>limit*0.8 ? '<span class="badge badge-warn">注意</span>'
+      : '<span class="badge badge-ok">正常</span>';
+    return `<tr><td>${r.name}</td>${hasDept?`<td style="color:#6e6e73">${r.dept}</td>`:''}<td style="text-align:right;font-weight:600">${r.hours}h</td><td>${badge}</td></tr>`;
+  }).join('');
+
+  const uploaderInfo = meta.uploadedAt ? `<span class="uploader-tag">更新: ${meta.uploadedAt}</span>` : '';
+
+  content.innerHTML = `
+    <div class="month-bar">
+      <span style="font-size:12px;color:#6e6e73">月選択:</span>
+      ${monthBtns}
+      <button class="del-btn" onclick="deleteMonth('${currentMonth}')" title="この月を削除">🗑</button>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">対象人数</div><div class="metric-value">${records.length}名</div></div>
+      <div class="metric"><div class="metric-label">合計残業時間</div><div class="metric-value">${total}h</div></div>
+      <div class="metric"><div class="metric-label">平均残業時間</div><div class="metric-value">${avg.toFixed(1)}h</div></div>
+      <div class="metric"><div class="metric-label">最大残業時間</div><div class="metric-value ${max>limit?'warn':''}">${max}h</div></div>
+      <div class="metric"><div class="metric-label">基準超過者</div><div class="metric-value ${over>0?'warn':'ok'}">${over}名</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">残業時間グラフ（${monthLabel(currentMonth)}）${uploaderInfo}</div>
+      ${bars}
+    </div>
+    <div class="card">
+      <div class="card-title">詳細一覧</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>社員名</th>${hasDept?'<th>部署</th>':''}<th style="text-align:right">残業時間</th><th>状態</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    ${months.length>1 ? renderTrend(sorted.map(r=>r.name), months) : ''}
+  `;
+}
+
+function renderTrend(names, months) {
+  const topNames = names.slice(0,5);
+  const colors = ['#378ADD','#1D9E75','#D85A30','#BA7517','#534AB7'];
+  const mList = months.slice().reverse();
+  const labels = mList.map(monthLabel);
+  const datasets = topNames.map((name,i) => ({
+    label: name, color: colors[i%colors.length],
+    data: mList.map(m => { const r=(state.months[m]||[]).find(x=>x.name===name); return r?r.hours:null; })
+  }));
+  const allVals = datasets.flatMap(d => d.data.filter(v=>v!==null));
+  if (!allVals.length) return '';
+  const maxV = Math.max(...allVals);
+  const mCount = labels.length;
+  const W=620,H=200,mL=44,mR=16,mT=16,mB=40,cW=W-mL-mR,cH=H-mT-mB;
+  const ticks = [0,25,50,75,100].filter(v=>v<=maxV*1.15+5);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;overflow:visible">`;
+  ticks.forEach(t => {
+    const y = mT+cH-(t/(maxV*1.1))*cH;
+    svg += `<line x1="${mL}" y1="${y.toFixed(1)}" x2="${W-mR}" y2="${y.toFixed(1)}" stroke="#e5e5ea" stroke-width="1"/>`;
+    svg += `<text x="${mL-5}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#aeaeb2" font-family="sans-serif">${t}h</text>`;
+  });
+  labels.forEach((l,i) => {
+    const x = mL+(mCount>1?(i/(mCount-1))*cW:cW/2);
+    svg += `<text x="${x.toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="10" fill="#aeaeb2" font-family="sans-serif">${l}</text>`;
+  });
+  datasets.forEach(ds => {
+    const pts = ds.data.map((v,i) => v===null?null:{x:mL+(mCount>1?(i/(mCount-1))*cW:cW/2),y:mT+cH-(v/(maxV*1.1))*cH}).filter(Boolean);
+    if (pts.length>1) svg += `<path d="${pts.map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${ds.color}" stroke-width="2"/>`;
+    pts.forEach(p => svg += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${ds.color}"/>`);
+  });
+  svg += '</svg>';
+  const legend = datasets.map(ds=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#6e6e73;margin-right:12px"><span style="width:10px;height:10px;border-radius:2px;background:${ds.color}"></span>${ds.label}</span>`).join('');
+  return `<div class="card"><div class="card-title">月次トレンド（上位${topNames.length}名）</div><div style="margin-bottom:12px">${legend}</div>${svg}</div>`;
+}
+
+function switchMonth(m) { currentMonth = m; render(); }
+
+function deleteMonth(m) {
+  if (!confirm(`${monthLabel(m)}のデータを削除しますか？`)) return;
+  delete state.months[m];
+  if (state.meta) delete state.meta[m];
+  currentMonth = null;
+  save(`${monthLabel(m)}を削除しました`); render();
+}
+
+document.getElementById('limitInput').addEventListener('change', () => {
+  state.limit = getLimit(); save('警告基準を変更しました');
+});
+
+const ua = document.getElementById('uploadArea');
+const fi = document.getElementById('fileInput');
+ua.addEventListener('click', () => fi.click());
+ua.addEventListener('dragover', e => { e.preventDefault(); ua.classList.add('drag'); });
+ua.addEventListener('dragleave', () => ua.classList.remove('drag'));
+ua.addEventListener('drop', e => { e.preventDefault(); ua.classList.remove('drag'); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', () => { if(fi.files[0]) handleFile(fi.files[0]); fi.value=''; });
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const { month, records } = parseCSV(e.target.result, file.name);
+      if (state.months[month] && !confirm(`${monthLabel(month)}のデータが既にあります。上書きしますか？`)) return;
+      if (!state.months) state.months = {};
+      if (!state.meta) state.meta = {};
+      state.months[month] = records;
+      state.meta[month] = { uploadedAt: new Date().toLocaleDateString('ja-JP') };
+      currentMonth = month;
+      save(`${monthLabel(month)}のデータを反映しました`); render();
+    } catch(err) { alert('読み込み失敗:\n' + err.message); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+load();
+</script>
+</body>
+</html>

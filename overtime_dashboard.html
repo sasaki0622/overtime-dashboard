@@ -295,10 +295,15 @@ function render() {
   currentMonth ? renderDetail(months,el) : renderSummary(months,el);
 }
 
+function getFilteredRecords(m) {
+  const excludes = state.excludes || [];
+  return (state.months[m] || []).filter(r => !excludes.includes(r.name));
+}
+
 function renderSummary(months,el) {
   const limit=getLimit();
   const rows=months.map(m => {
-    const recs=state.months[m]||[];
+    const recs=getFilteredRecords(m);
     const total=recs.reduce((s,r)=>s+r.hours,0);
     const avg=recs.length?(total/recs.length).toFixed(1):'0.0';
     const max=recs.length?Math.max(...recs.map(r=>r.hours)):0;
@@ -359,13 +364,13 @@ function renderTrendSummary(months) {
 
 function renderDetail(months,el) {
   const limit=getLimit();
-  const records=state.months[currentMonth]||[];
+  const records=getFilteredRecords(currentMonth);
   const meta=(state.meta||{})[currentMonth]||{};
   const total=records.reduce((s,r)=>s+r.hours,0);
   const avg=records.length?total/records.length:0;
   const max=records.length?Math.max(...records.map(r=>r.hours)):0;
   const over=records.filter(r=>r.hours>limit).length;
-  const sorted=[...records].sort((a,b)=>b.hours-a.hours);
+  const sorted=[...records].filter(r=>r.hours>0).sort((a,b)=>b.hours-a.hours);
   const maxH=sorted[0]?.hours||1;
   const bars=sorted.map(r=>{
     const pct=Math.round((r.hours/maxH)*100);

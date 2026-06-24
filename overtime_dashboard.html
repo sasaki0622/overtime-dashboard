@@ -93,6 +93,15 @@
         <div style="font-size:13px;color:var(--text2)"><strong style="color:var(--text)">CSVファイルをドロップ</strong>またはクリックして選択</div>
         <input type="file" id="fileInput" accept=".csv" style="display:none">
       </div>
+      <!-- 除外リスト管理 -->
+      <div class="card" style="margin-bottom:1.25rem">
+        <div class="card-title">除外リスト管理<span style="font-size:11px;color:var(--text3);font-weight:400;margin-left:8px">管理職・対象外の方を設定</span></div>
+        <div id="excludeList" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="excludeInput" placeholder="氏名を入力（例：大久保 英人）" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px">
+          <button class="btn btn-primary" onclick="addExclude()">追加</button>
+        </div>
+      </div>
     </div>
 
     <!-- トークン入力（管理者のみ） -->
@@ -118,7 +127,7 @@ const DATA_FILE = 'data.json';
 const RAW_URL = `https://raw.githubusercontent.com/${REPO}/main/${DATA_FILE}`;
 const API_URL = `https://api.github.com/repos/${REPO}/contents/${DATA_FILE}`;
 
-let state = { months: {}, meta: {}, limit: 45 };
+let state = { months: {}, meta: {}, excludes: ['大久保 英人'], limit: 45 };
 let currentMonth = null;
 let ghToken = null;
 let fileSha = null;
@@ -233,12 +242,50 @@ function parseCSV(text, filename) {
     if (isNaN(h)) continue;
     const dept=deptIdx>=0?(cols[deptIdx]||''):'';
     if (dept.includes('パート')||dept.includes('アルバイト')) continue;
+    if ((state.excludes||[]).includes(name)) continue; // 除外リスト
     records.push({name,hours:h,dept:''});
   }
   if (!records.length) throw new Error('有効なデータが見つかりません');
   return {month,records};
 }
 function getLimit() { return parseInt(document.getElementById('limitInput').value)||45; }
+
+function renderExcludeList() {
+  const list = state.excludes || [];
+  const el = document.getElementById('excludeList');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">除外中の方はいません</div>';
+    return;
+  }
+  el.innerHTML = list.map((name,i) =>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:13px;flex:1">${name}</span>
+      <span style="font-size:11px;background:var(--orange-bg);color:var(--orange-text);padding:2px 8px;border-radius:10px">対象外</span>
+      <button class="del-btn" onclick="removeExclude(${i})">✕ 解除</button>
+    </div>`
+  ).join('');
+}
+
+async function addExclude() {
+  const input = document.getElementById('excludeInput');
+  const name = input.value.trim();
+  if (!name) { alert('氏名を入力してください'); return; }
+  if (!state.excludes) state.excludes = [];
+  if (state.excludes.includes(name)) { alert('すでに除外リストに含まれています'); return; }
+  state.excludes.push(name);
+  input.value = '';
+  const ok = await saveToGitHub();
+  if (ok) { showSync(`「${name}」を除外リストに追加しました`); renderExcludeList(); render(); }
+}
+
+async function removeExclude(idx) {
+  const name = state.excludes[idx];
+  if (!confirm(`「${name}」を除外リストから解除しますか？`)) return;
+  state.excludes.splice(idx, 1);
+  const ok = await saveToGitHub();
+  if (ok) { showSync(`「${name}」を解除しました`); renderExcludeList(); render(); }
+}
 
 function render() {
   const months = Object.keys(state.months).sort().reverse();
@@ -451,6 +498,7 @@ async function init() {
   }
   document.getElementById('loadingArea').style.display='none';
   document.getElementById('mainArea').style.display='block';
+  renderExcludeList();
   render();
 }
 

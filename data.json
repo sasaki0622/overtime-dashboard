@@ -303,5 +303,8 @@
       "uploadedAt": "2026/6/24"
     }
   },
-  "limit": 45
+  "limit": 45,
+  "excludes": [
+    "大久保 英人"
+  ]
 }
